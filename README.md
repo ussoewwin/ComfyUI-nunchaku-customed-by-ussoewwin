@@ -1,3 +1,7 @@
+> **Backup fork of ComfyUI-nunchaku**  
+> Customized for Z-Image-Turbo support and local development  
+> Not intended as official distribution
+
 <div align="center" id="nunchaku_logo">
   <img src="https://huggingface.co/datasets/nunchaku-tech/cdn/resolve/main/logo/v2/nunchaku-compact-transparent.png" alt="logo" width="220"></img>
 </div>
