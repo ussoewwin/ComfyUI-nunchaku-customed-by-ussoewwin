@@ -19,14 +19,14 @@ Join our user groups on [**Discord**](https://discord.gg/Wk6PnwX9Sm) and [**WeCh
 
 ![comfyui](https://huggingface.co/datasets/nunchaku-tech/cdn/resolve/main/ComfyUI-nunchaku/comfyui.jpg)
 
-## 公式版について
+## About the Official Version
 
-このリポジトリは [**ComfyUI-nunchaku**](https://github.com/nunchaku-tech/ComfyUI-nunchaku) のカスタマイズ版です。
+This repository is a customized version of [**ComfyUI-nunchaku**](https://github.com/nunchaku-tech/ComfyUI-nunchaku).
 
-Nunchakuの概要、インストール方法、使用方法、最新ニュースなどについては、[**公式版のリポジトリ**](https://github.com/nunchaku-tech/ComfyUI-nunchaku)をご覧ください。
+For overview, installation instructions, usage, latest news, and other information about Nunchaku, please refer to the [**official repository**](https://github.com/nunchaku-tech/ComfyUI-nunchaku).
 
-## 更新履歴
+## Changelog
 
 ### 1.0.0
 
-ussoewwinによるフォーク版公開
+Fork version release by ussoewwin
