@@ -27,6 +27,12 @@ For overview, installation instructions, usage, latest news, and other informati
 
 ## Changelog
 
+### 1.0.1
+
+PuLID fix for Nunchaku FLUX in ComfyUI. Fixed 10 errors encountered when integrating PuLID (Personalized Identity) functionality. Modified 5 files (3 site-packages, 2 custom nodes) to resolve compatibility issues with ComfyUI 0.3.68, LoRA loading errors, face detection failures, and argument mismatches.
+
+For detailed explanation, see [md/1.0.1.md](md/1.0.1.md).
+
 ### 1.0.0
 
 Fork version release by ussoewwin
