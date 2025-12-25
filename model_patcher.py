@@ -26,7 +26,11 @@ class NunchakuModelPatcher(ModelPatcher):
             Not used in this implementation.
         """
         with self.use_ejected():
-            self.model.diffusion_model.to_safely(device_to)
+            diffusion_model = self.model.diffusion_model
+            if hasattr(diffusion_model, 'to_safely'):
+                diffusion_model.to_safely(device_to)
+            else:
+                diffusion_model.to(device_to)
 
     def detach(self, unpatch_all: bool = True):
         """
@@ -38,4 +42,8 @@ class NunchakuModelPatcher(ModelPatcher):
             If True, unpatch all model components (default is True).
         """
         self.eject_model()
-        self.model.diffusion_model.to_safely(self.offload_device)
+        diffusion_model = self.model.diffusion_model
+        if hasattr(diffusion_model, 'to_safely'):
+            diffusion_model.to_safely(self.offload_device)
+        else:
+            diffusion_model.to(self.offload_device)

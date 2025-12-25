@@ -3,7 +3,6 @@ This module provides the :class:`NunchakuFluxLoraLoader` node
 for applying LoRA weights to Nunchaku FLUX models within ComfyUI.
 """
 
-import copy
 import logging
 import os
 
@@ -112,14 +111,11 @@ class NunchakuFluxLoraLoader:
         model_wrapper = model.model.diffusion_model
         assert isinstance(model_wrapper, ComfyFluxWrapper)
 
-        transformer = model_wrapper.model
-        model_wrapper.model = None
-        ret_model = copy.deepcopy(model)  # copy everything except the model
+        # Clone the model's ModelPatcher to avoid modifying the original
+        # This avoids deepcopy issues with C extension objects (QuantizedFluxModel)
+        ret_model = model.clone()
         ret_model_wrapper = ret_model.model.diffusion_model
         assert isinstance(ret_model_wrapper, ComfyFluxWrapper)
-
-        model_wrapper.model = transformer
-        ret_model_wrapper.model = transformer
 
         lora_path = get_full_path_or_raise("loras", lora_name)
         ret_model_wrapper.loras.append((lora_path, lora_strength))
@@ -257,14 +253,11 @@ class NunchakuFluxLoraStack:
         model_wrapper = model.model.diffusion_model
         assert isinstance(model_wrapper, ComfyFluxWrapper)
 
-        transformer = model_wrapper.model
-        model_wrapper.model = None
-        ret_model = copy.deepcopy(model)  # copy everything except the model
+        # Clone the model's ModelPatcher to avoid modifying the original
+        # This avoids deepcopy issues with C extension objects (QuantizedFluxModel)
+        ret_model = model.clone()
         ret_model_wrapper = ret_model.model.diffusion_model
         assert isinstance(ret_model_wrapper, ComfyFluxWrapper)
-
-        model_wrapper.model = transformer
-        ret_model_wrapper.model = transformer
 
         # Clear existing LoRA list
         ret_model_wrapper.loras = []

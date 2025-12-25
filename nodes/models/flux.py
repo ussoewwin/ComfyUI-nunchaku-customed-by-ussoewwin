@@ -205,6 +205,9 @@ class NunchakuFluxDiTLoader:
         tuple
             A tuple containing the loaded and patched model.
         """
+        # Default to device 0 if device_id is None
+        if device_id is None:
+            device_id = 0
         device = torch.device(f"cuda:{device_id}")
 
         model_path = get_full_path_or_raise("diffusion_models", model_path)

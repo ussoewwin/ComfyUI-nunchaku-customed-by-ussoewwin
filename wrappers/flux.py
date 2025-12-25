@@ -73,6 +73,13 @@ class ComfyFluxWrapper(nn.Module):
 
         self._prev_timestep = None  # for first-block cache
         self._cache_context = None
+        
+        # Store original time_text_embed for patching (if it exists)
+        # Nunchaku's internal implementation has a bug with argument names
+        if hasattr(model, 'time_text_embed'):
+            self._original_time_text_embed = model.time_text_embed
+        else:
+            self._original_time_text_embed = None
 
     def process_img(self, x, index=0, h_offset=0, w_offset=0):
         """
@@ -123,9 +130,9 @@ class ComfyFluxWrapper(nn.Module):
         self,
         x,
         timestep,
-        context,
-        y,
-        guidance,
+        context=None,
+        y=None,
+        guidance=None,
         control=None,
         transformer_options={},
         **kwargs,
@@ -251,7 +258,61 @@ class ComfyFluxWrapper(nn.Module):
 
             # Update the previous timestamp
             self._prev_timestep = timestep_float
-            with cache_context(self._cache_context):
+            
+            # Patch time_text_embed to fix argument name issue (if it exists)
+            # Nunchaku's NunchakuFluxTransformer2dModel calls:
+            #   self.time_text_embed(timestep, pooled_projections)
+            # But CombinedTimestepGuidanceTextProjEmbeddings.forward expects:
+            #   forward(timestep, guidance=None, pooled_projection=pooled_projections)
+            original_forward = None
+            if self._original_time_text_embed is not None:
+                original_forward = self._original_time_text_embed.forward
+                def patched_forward(timestep, guidance=None, pooled_projections=None):
+                    return original_forward(timestep, guidance=guidance, pooled_projection=pooled_projections)
+                self._original_time_text_embed.forward = patched_forward
+            
+            try:
+                with cache_context(self._cache_context):
+                    if self.customized_forward is None:
+                        out = model(
+                            hidden_states=img,
+                            encoder_hidden_states=context,
+                            pooled_projections=y,
+                            timestep=timestep,
+                            img_ids=img_ids,
+                            txt_ids=txt_ids,
+                            guidance=guidance if self.config["guidance_embed"] else None,
+                            controlnet_block_samples=controlnet_block_samples,
+                            controlnet_single_block_samples=controlnet_single_block_samples,
+                        ).sample
+                    else:
+                        out = self.customized_forward(
+                            model,
+                            hidden_states=img,
+                            encoder_hidden_states=context,
+                            pooled_projections=y,
+                            timestep=timestep,
+                            img_ids=img_ids,
+                            txt_ids=txt_ids,
+                            guidance=guidance if self.config["guidance_embed"] else None,
+                            controlnet_block_samples=controlnet_block_samples,
+                            controlnet_single_block_samples=controlnet_single_block_samples,
+                            **self.forward_kwargs,
+                        ).sample
+            finally:
+                # Restore original method (if it exists)
+                if self._original_time_text_embed is not None:
+                    self._original_time_text_embed.forward = original_forward
+        else:
+            # Patch time_text_embed to fix argument name issue (if it exists) - Cache disabled path
+            original_forward = None
+            if self._original_time_text_embed is not None:
+                original_forward = self._original_time_text_embed.forward
+                def patched_forward(timestep, guidance=None, pooled_projections=None):
+                    return original_forward(timestep, guidance=guidance, pooled_projection=pooled_projections)
+                self._original_time_text_embed.forward = patched_forward
+            
+            try:
                 if self.customized_forward is None:
                     out = model(
                         hidden_states=img,
@@ -278,33 +339,10 @@ class ComfyFluxWrapper(nn.Module):
                         controlnet_single_block_samples=controlnet_single_block_samples,
                         **self.forward_kwargs,
                     ).sample
-        else:
-            if self.customized_forward is None:
-                out = model(
-                    hidden_states=img,
-                    encoder_hidden_states=context,
-                    pooled_projections=y,
-                    timestep=timestep,
-                    img_ids=img_ids,
-                    txt_ids=txt_ids,
-                    guidance=guidance if self.config["guidance_embed"] else None,
-                    controlnet_block_samples=controlnet_block_samples,
-                    controlnet_single_block_samples=controlnet_single_block_samples,
-                ).sample
-            else:
-                out = self.customized_forward(
-                    model,
-                    hidden_states=img,
-                    encoder_hidden_states=context,
-                    pooled_projections=y,
-                    timestep=timestep,
-                    img_ids=img_ids,
-                    txt_ids=txt_ids,
-                    guidance=guidance if self.config["guidance_embed"] else None,
-                    controlnet_block_samples=controlnet_block_samples,
-                    controlnet_single_block_samples=controlnet_single_block_samples,
-                    **self.forward_kwargs,
-                ).sample
+            finally:
+                # Restore original method (if it exists)
+                if self._original_time_text_embed is not None:
+                    self._original_time_text_embed.forward = original_forward
         if self.pulid_pipeline is not None:
             self.model.transformer_blocks[0].pulid_ca = None
 

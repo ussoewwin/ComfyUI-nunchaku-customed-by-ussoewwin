@@ -12,6 +12,7 @@ This module implements the Nunchaku Qwen-Image model and related components.
 """
 
 import gc
+import logging
 from typing import Optional, Tuple
 
 import torch
@@ -32,6 +33,8 @@ from nunchaku.models.utils import CPUOffloadManager
 from nunchaku.ops.fused import fused_gelu_mlp
 
 from ..mixins.model import NunchakuModelMixin
+
+logger = logging.getLogger(__name__)
 
 
 class NunchakuGELU(GELU):
@@ -727,7 +730,17 @@ class NunchakuQwenImageTransformer2DModel(NunchakuModelMixin, QwenImageTransform
         )
 
         patches_replace = transformer_options.get("patches_replace", {})
+        patches = transformer_options.get("patches", {})
         blocks_replace = patches_replace.get("dit", {})
+
+        transformer_options["total_blocks"] = len(self.transformer_blocks)
+        transformer_options["block_type"] = "double"
+
+        # Log if double_block patches are present
+        has_double_block_patches = "double_block" in patches
+        if has_double_block_patches:
+            num_patches = len(patches["double_block"])
+            logger.info(f"🔧 Nunchaku QwenImage: Applying {num_patches} double_block patch(es) for diffsynth ControlNet")
 
         # Setup compute stream for offloading
         compute_stream = torch.cuda.current_stream()
@@ -735,6 +748,7 @@ class NunchakuQwenImageTransformer2DModel(NunchakuModelMixin, QwenImageTransform
             self.offload_manager.initialize(compute_stream)
 
         for i, block in enumerate(self.transformer_blocks):
+            transformer_options["block_index"] = i
             with torch.cuda.stream(compute_stream):
                 if self.offload:
                     block = self.offload_manager.get_block(i)
@@ -752,7 +766,7 @@ class NunchakuQwenImageTransformer2DModel(NunchakuModelMixin, QwenImageTransform
                         return out
 
                     out = blocks_replace[("double_block", i)](
-                        {"img": hidden_states, "txt": encoder_hidden_states, "vec": temb, "pe": image_rotary_emb},
+                        {"img": hidden_states, "txt": encoder_hidden_states, "vec": temb, "pe": image_rotary_emb, "transformer_options": transformer_options},
                         {"original_block": block_wrap},
                     )
                     hidden_states = out["img"]
@@ -765,6 +779,14 @@ class NunchakuQwenImageTransformer2DModel(NunchakuModelMixin, QwenImageTransform
                         temb=temb,
                         image_rotary_emb=image_rotary_emb,
                     )
+
+                # Apply double_block patches (for diffsynth ControlNet)
+                if "double_block" in patches:
+                    for p_idx, p in enumerate(patches["double_block"]):
+                        logger.debug(f"🔧 Nunchaku QwenImage: Calling double_block patch {p_idx+1}/{num_patches} at block {i}/{len(self.transformer_blocks)-1}")
+                        out = p({"img": hidden_states, "txt": encoder_hidden_states, "x": x, "block_index": i, "transformer_options": transformer_options})
+                        hidden_states = out["img"]
+                        encoder_hidden_states = out["txt"]
                 # ControlNet helpers(device/dtype-safe residual adds)
                 _control = (
                     control

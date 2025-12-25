@@ -10,6 +10,7 @@ with ComfyUI, enabling face restoration and enhancement using PuLID and related 
 import copy
 import logging
 import os
+import pickle
 from functools import partial
 from types import MethodType
 
@@ -121,8 +122,23 @@ class NunchakuFluxPuLIDApplyV2:
         """
         all_embeddings = []
         for i in range(image.shape[0]):
-            single_image = image[i : i + 1].squeeze().cpu().numpy() * 255.0
+            # Convert to numpy and ensure correct shape [H, W, C] (RGB)
+            single_image = image[i : i + 1].cpu().numpy()
+            # Remove batch dimension: [1, H, W, C] -> [H, W, C]
+            if single_image.ndim == 4:
+                single_image = single_image[0]
+            # Handle CHW format: [C, H, W] -> [H, W, C]
+            if single_image.ndim == 3 and single_image.shape[0] == 3:
+                single_image = np.transpose(single_image, (1, 2, 0))
+            # Convert to 0-255 range
+            single_image = single_image * 255.0
             single_image = np.clip(single_image, 0, 255).astype(np.uint8)
+            
+            # Ensure RGB format (3 channels)
+            if single_image.ndim == 2:
+                single_image = np.stack([single_image] * 3, axis=-1)
+            elif single_image.shape[-1] == 1:
+                single_image = np.repeat(single_image, 3, axis=-1)
 
             id_embedding, _ = pulid_pipline.get_id_embedding(single_image)
             if id_embedding is not None:
@@ -136,15 +152,18 @@ class NunchakuFluxPuLIDApplyV2:
 
         model_wrapper = model.model.diffusion_model
         assert isinstance(model_wrapper, ComfyFluxWrapper)
-        transformer = model_wrapper.model
-
-        model_wrapper.model = None
-        ret_model = copy.deepcopy(model)  # copy everything except the model
+        
+        # Instead of deepcopy, we directly modify the existing wrapper
+        # and create a new ModelPatcher with the modified wrapper
+        # Clone the model's ModelPatcher to avoid modifying the original
+        ret_model = model.clone()
+        
+        # Get the wrapper from the cloned model
         ret_model_wrapper = ret_model.model.diffusion_model
-        assert isinstance(ret_model_wrapper, ComfyFluxWrapper)
-        ret_model_wrapper.model = transformer
-        model_wrapper.model = transformer
+        assert isinstance(ret_model_wrapper, ComfyFluxWrapper), \
+            f"Expected ComfyFluxWrapper, got {type(ret_model_wrapper).__name__}"
 
+        # Apply PuLID customization to the cloned model's wrapper
         ret_model_wrapper.pulid_pipeline = pulid_pipline
         ret_model_wrapper.customized_forward = partial(
             pulid_forward, id_embeddings=id_embeddings, id_weight=weight, start_timestep=start_at, end_timestep=end_at
@@ -190,7 +209,7 @@ class NunchakuPuLIDLoaderV2:
     CATEGORY = "Nunchaku"
     TITLE = "Nunchaku PuLID Loader V2"
 
-    def load(self, model, pulid_file: str, eva_clip_file: str, insight_face_provider: str):
+    def load(self, model=None, pulid_file: str = None, eva_clip_file: str = None, insight_face_provider: str = "gpu"):
         """
         Load the PuLID pipeline and associate it with the given Nunchaku FLUX model.
 
@@ -210,6 +229,12 @@ class NunchakuPuLIDLoaderV2:
         tuple
             (model, pulid_pipeline)
         """
+        if model is None:
+            raise ValueError("Model input is missing (NunchakuPuLIDLoaderV2). Please ensure the model is connected.")
+        if pulid_file is None:
+            raise ValueError("PuLID file input is missing.")
+        if eva_clip_file is None:
+            raise ValueError("EVA Clip file input is missing.")
         model_wrapper = model.model.diffusion_model
         assert isinstance(model_wrapper, ComfyFluxWrapper)
         transformer = model_wrapper.model
